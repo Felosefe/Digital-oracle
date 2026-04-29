@@ -86,6 +86,18 @@ Based on question type, select from the signal menu below. **Don't use just one 
 - FearGreedProvider: CNN Fear & Greed composite score (momentum, breadth, VIX, put/call, junk bond demand, volatility, safe haven)
 - Web search: VIX, corporate bond issuance volume, analyst rating distribution
 
+#### China A-share allocation
+- AStockProvider: all A-share stock history, index history, sector snapshots/history, market breadth, sector breadth, turnover, northbound flow
+- Core indices: 上证指数 (`sh000001`), 沪深300 (`sh000300`), 上证50 (`sh000016`), 中证500 (`sh000905`)
+- Sector rotation: 银行, 证券, 保险, 白酒, 煤炭行业, 电力行业, 公用事业, 军工, 半导体, 医药, 有色金属
+- A-share leaders: 600519, 601318, 600036, 601398, 600900, 600030, 600276, 600150, 300750, 300760, 688981, 688111
+- RMB and offshore risk: USDCNY, USDCHF, DXY web search, China ETFs (FXI/KWEB as external proxies only)
+- Global macro validation: US Treasury yield curve, copper/gold ratio, crude oil, gold, CFTC COT for copper/gold/crude
+- Risk appetite validation: SPY/QQQ trend, VIX/FearGreed, BTC/ETH market cap and Deribit BTC futures basis
+- AStockMoneyFlowProvider: industry/concept/individual stock fund flow — main net inflow direction, consecutive flow days, super-large/large/medium/small order breakdowns
+- AStockConstituentProvider: sector/concept/index constituent lists — ranked by change/amount/cap, with aggregate breadth stats (up/down/limit-up/limit-down counts)
+- Northbound flow: use as foreign institutional allocation signal; sustained net inflow supports large-cap A-share risk appetite
+
 #### Stock/Options analysis / Crash probability
 - YFinance: Options chain → ATM IV (expected volatility), IV skew (upside/downside fear asymmetry), put/call ratio (bull/bear sentiment), max pain (market maker profit zone), implied move (expected price range), Greeks (delta ≈ ITM probability)
 - YahooPriceProvider: Underlying historical price → realized volatility (compare vs implied volatility to judge options premium)
@@ -127,6 +139,11 @@ from digital_oracle import (
     BisProvider, BisRateQuery,
     WorldBankProvider, WorldBankQuery,
     YFinanceProvider, OptionsChainQuery,      # requires uv pip install yfinance
+    AStockProvider, AStockHistoryQuery, AStockIndexQuery,
+    AStockBreadthQuery, AStockSectorBreadthQuery,
+    AStockSectorHistoryQuery, AStockNorthboundQuery,  # requires uv pip install akshare; baostock recommended
+    AStockMoneyFlowProvider, MoneyFlowQuery,           # requires uv pip install akshare
+    AStockConstituentProvider, ConstituentQuery,       # requires uv pip install akshare
     FearGreedProvider,
     CMEFedWatchProvider,
     gather,
@@ -144,6 +161,9 @@ edgar = EdgarProvider(user_email="you@example.com")  # SEC requires email in Use
 bis = BisProvider()
 wb = WorldBankProvider()
 yf = YFinanceProvider()  # requires uv pip install yfinance
+astock = AStockProvider()  # requires uv pip install akshare; baostock recommended for stock-history fallback
+moneyflow = AStockMoneyFlowProvider()  # requires uv pip install akshare
+constituent = AStockConstituentProvider()  # requires uv pip install akshare
 fear_greed = FearGreedProvider()
 fedwatch = CMEFedWatchProvider()
 
@@ -171,6 +191,21 @@ result = gather({
     "fear_greed": lambda: fear_greed.get_index(),
     # CME FedWatch (implied rate probabilities from futures)
     "fedwatch": lambda: fedwatch.get_probabilities(),
+    # China A-share signals
+    "a_shanghai": lambda: astock.get_index_history(AStockIndexQuery(symbol="sh000001", limit=60)),
+    "a_breadth": lambda: astock.get_market_breadth(AStockBreadthQuery()),
+    "a_banks": lambda: astock.get_sector_history(AStockSectorHistoryQuery(symbol="银行", limit=60)),
+    "a_banks_breadth": lambda: astock.get_sector_breadth(AStockSectorBreadthQuery(symbol="银行")),
+    "northbound": lambda: astock.get_northbound_flow(AStockNorthboundQuery(limit=30)),
+    # Fund flow — where money is actually going
+    "flow_600519": lambda: moneyflow.get_moneyflow(MoneyFlowQuery(symbol="600519", scope="individual", lookback_days=5)),
+    "flow_semi": lambda: moneyflow.get_moneyflow(MoneyFlowQuery(symbol="半导体", scope="industry", lookback_days=5)),
+    "flow_rank": lambda: moneyflow.list_top_flows(scope="industry", top_n=10),
+    # Constituent analysis — who's driving the sector
+    "semi_constituents": lambda: constituent.get_constituents(
+        ConstituentQuery(symbol="半导体", scope="industry", sort_by="change_pct")
+    ),
+    "hs300_cons": lambda: constituent.get_constituents(ConstituentQuery(symbol="000300", scope="index")),
     # Web search runs in parallel with structured providers
     "vix": lambda: web.search("VIX index current level"),
     "hy_spread": lambda: web.search("US high yield bond spread OAS"),
@@ -188,7 +223,7 @@ if chain:
     print(f"Max pain: {chain.max_pain()}")
 ```
 
-**All 14 Providers:**
+**All 15 Providers:**
 
 | Provider | Data Type | Purpose | Dependency |
 |----------|-----------|---------|------------|
@@ -204,10 +239,13 @@ if chain:
 | BisProvider | Central bank data | Policy rates, credit-to-GDP gap | stdlib |
 | WorldBankProvider | Development indicators | GDP, population, trade, macro data | stdlib |
 | YFinanceProvider | US options chains | IV, Greeks, put/call ratio, max pain | yfinance |
+| AStockProvider | China A-share market | Indices, all A-share stocks, sectors, market/sector breadth, turnover, northbound flow | akshare; baostock recommended |
+| AStockMoneyFlowProvider | A-share fund flow | Industry/concept/individual main inflow, order-size breakdown, consecutive flow days | akshare |
+| AStockConstituentProvider | A-share constituents | Sector/concept/index member lists ranked by price change/amount/cap, with breadth stats | akshare |
 | **FearGreedProvider** | **Market sentiment** | **CNN 7-signal composite → 0-100 score** | **stdlib** |
 | **CMEFedWatchProvider** | **Rate probabilities** | **FOMC rate change implied from futures** | **stdlib** |
 
-> 12 out of 14 providers have zero external dependencies and zero API keys. YahooPriceProvider and YFinanceProvider require `pip install yfinance`.
+> 12 out of 17 providers have zero external dependencies and zero API keys. YahooPriceProvider and YFinanceProvider require `pip install yfinance`. AStockProvider, AStockMoneyFlowProvider, and AStockConstituentProvider require `pip install akshare`; install `baostock` to enable domestic stock-history fallback for AStockProvider.
 
 **WebSearchProvider usage:**
 - `web.search("query")` → returns `WebSearchResult` (search summary) — render with `.text()`
@@ -319,6 +357,14 @@ Four analysis dimensions:
 - BIS data updates infrequently (monthly/quarterly) — suitable for long-term trends, not short-term trading
 - World Bank GDP data typically lags 1-2 years — latest year may return `None`
 - YFinance requires `uv pip install yfinance` (auto-installs pandas). After-hours IV may be inaccurate (bid/ask = 0) — use during market hours
+- AStockProvider requires `uv pip install akshare`; install `uv pip install baostock` to enable domestic A-share stock-history fallback before Yahoo. It covers China A-share stock history, index history, sector snapshots/history, market breadth, sector breadth, turnover, and northbound flow. By default it includes all A-share boards; pass `mainboard_only=True` only when the user explicitly wants mainboard-only analysis
+- For A-share investment analysis, always include market breadth before stock picking: `get_market_breadth(AStockBreadthQuery())` for all-A up/down/flat/limit-up/limit-down counts and total turnover, and `get_sector_breadth(AStockSectorBreadthQuery(symbol="..."))` for the target sector when available. Prefer `breadth.metadata["breadth_level"] == "stock"`; `source=stock_zh_a_spot_sina` is acceptable as a full-A stock-level fallback when Eastmoney full-market snapshots fail. If `breadth.metadata["breadth_level"] == "sector_proxy"`, state that breadth is sector-level fallback rather than stock-level breadth. Treat weak breadth with strong index gains as a narrowing-market warning
+- AStockConstituentProvider requires `uv pip install akshare`. Provides `get_constituents(ConstituentQuery(symbol=..., scope="industry"/"concept"/"index", sort_by="change_pct"/"amount"/"market_cap", top_n=...))` returning a `ConstituentList` with ranked `StockConstituent` entries plus aggregate breadth stats (up/down/flat/limit-up/limit-down counts, total amount, average/median change, average market cap). For industry/concept scope, `symbol` is the Chinese name ("半导体"); for index scope, `symbol` is the index code ("000300"). Use this to check if a sector rally is broad-based or driven by a few heavyweights — if `average_change_pct > median_change_pct` by a wide margin, large-caps are pulling the index while small-caps lag
+- AStockMoneyFlowProvider requires `uv pip install akshare`. Provides `get_moneyflow(MoneyFlowQuery(symbol=..., scope=..., lookback_days=5))` for individual/industry/concept history with consecutive inflow/outflow day tracking, and `list_top_flows(scope="industry"/"concept", top_n=20)` for ranking. For individual stocks, `symbol` is the stock code ("600519"); for industry/concept, use the Chinese name ("半导体"). Money flow data is same-day T+0 — it reflects the current session's capital movements. Always cross-check flow direction with price direction: rising price + net outflow = distribution warning; falling price + net inflow = accumulation signal
+- AStockProvider's optional mainboard filter keeps `600/601/603/605` and `000/001/002/003`, and excludes ChiNext, STAR Market, and Beijing Stock Exchange codes
+- For A-share data collection, prefer `scripts/demo_astock.py --network-profile china` or an equivalent direct domestic route. When a global proxy/VPN route is active, Eastmoney may fail and AStockProvider should fall back to BaoStock/Yahoo; treat `history.metadata["source"]` as part of the evidence quality note
+- Before A-share analysis in a local agent environment, run `E:\Project\digital-oracle\.venv-eastmoney\Scripts\python.exe E:\Project\digital-oracle\scripts\audit_agent_sources.py --network-profile china --limit 5 --require-venv` and include its source audit output in the report. If `venv_ok=false` or any critical check fails, fix the execution environment before analysis
+- For A-share-only investment questions, do not recommend US stocks, Hong Kong stocks, crypto, or non-A-share assets as purchasable assets unless the user explicitly permits them. Use them only as external risk and liquidity signals
 - YFinance `get_chain()` auto-computes Black-Scholes Greeks (pure stdlib `math.erf`, no scipy needed)
 - Absolute value of put delta ≈ probability of that strike being ITM at expiration (rough estimate)
 - Put/Call ratio > 1.5 is typically bearish, but as a contrarian indicator, extreme values (> 3) may signal a bottom

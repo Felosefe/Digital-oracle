@@ -3,3 +3,6 @@ __pycache__/
 tmp_*.py
 .claude/
 .deps/
+.cache/
+.venv*/
+pytest-cache-files-*/

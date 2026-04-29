@@ -1,6 +1,6 @@
 # Provider API 速查
 
-所有 provider 零 API key。YahooPriceProvider 和 YFinanceProvider 需要 `pip install yfinance`。
+所有 provider 零 API key。YahooPriceProvider 和 YFinanceProvider 需要 `pip install yfinance`；AStockProvider 需要 `pip install akshare`，个股历史国内兜底建议安装 `pip install baostock`。
 
 ```python
 from digital_oracle import (
@@ -16,10 +16,93 @@ from digital_oracle import (
     BisProvider, BisRateQuery, BisCreditGapQuery,
     WorldBankProvider, WorldBankQuery,
     YFinanceProvider, OptionsChainQuery,      # pip install yfinance
+    AStockProvider, AStockHistoryQuery, AStockBreadthQuery, AStockSectorBreadthQuery,  # pip install akshare baostock
+    AStockMoneyFlowProvider, MoneyFlowQuery,  # pip install akshare
+    AStockConstituentProvider, ConstituentQuery,  # pip install akshare
     FearGreedProvider,
     CMEFedWatchProvider,
 )
 ```
+
+## AStockProvider
+
+A 股市场数据。第一版覆盖全 A 股个股日线、指数日线、行业板块快照、行业板块日线、市场广度、成交额汇总、北向资金历史。**需要 `pip install akshare`；建议同时安装 `pip install baostock` 作为个股历史兜底。**
+
+```python
+from digital_oracle import (
+    AStockProvider,
+    AStockHistoryQuery,
+    AStockBreadthQuery,
+    AStockSectorBreadthQuery,
+    AStockIndexQuery,
+    AStockSectorHistoryQuery,
+    AStockNorthboundQuery,
+)
+
+a = AStockProvider()
+
+# 个股历史行情（默认覆盖全 A 股）
+history = a.get_history(AStockHistoryQuery(symbol="600519", limit=60))
+# 返回 PriceHistory；history.bars -> tuple[PriceBar, ...]
+# history.metadata["source"] 会显示 eastmoney_curl_cffi / eastmoney_urllib / baostock / yahoo_finance
+
+# 如需只允许主板代码，可显式传 mainboard_only=True
+mainboard = a.get_history(AStockHistoryQuery(symbol="600519", limit=60, mainboard_only=True))
+
+# 指数历史行情
+sh = a.get_index_history(AStockIndexQuery(symbol="sh000001", limit=60))
+hs300 = a.get_index_history(AStockIndexQuery(symbol="sh000300", limit=60))
+
+# 全 A 股实时快照
+stocks = a.list_stock_snapshots()
+# 返回 list[AStockSnapshot]
+# snapshot.code, snapshot.name, snapshot.latest, snapshot.change_pct
+# snapshot.amount, snapshot.turnover_rate, snapshot.pe_dynamic, snapshot.pb
+
+# 全市场广度 + 成交额
+breadth = a.get_market_breadth(AStockBreadthQuery())
+# breadth.total_count, breadth.up_count, breadth.down_count, breadth.flat_count
+# breadth.limit_up_count, breadth.limit_down_count, breadth.total_amount
+# breadth.metadata["breadth_level"] 为 stock 时是全 A 个股级广度；为 sector_proxy 时是行业代理广度
+
+# 行业板块
+sectors = a.list_sector_snapshots()
+banks = a.get_sector_history(AStockSectorHistoryQuery(symbol="银行", limit=60))
+semis_breadth = a.get_sector_breadth(AStockSectorBreadthQuery(symbol="半导体"))
+
+# 北向资金
+northbound = a.get_northbound_flow(AStockNorthboundQuery(limit=30))
+# flow.date, flow.net_buy_amount, flow.cumulative_net_buy_amount, flow.hs300_change_pct
+```
+
+**可选主板过滤规则：**
+- 保留沪市主板：`600`, `601`, `603`, `605`
+- 保留深市主板：`000`, `001`, `002`, `003`
+- 排除创业板 `300/301`、科创板 `688/689`、北交所 `4/8/9`
+
+**A 股分析建议：** 默认覆盖全 A 股，包括主板、创业板、科创板、北交所；用 AStockProvider 作为本土资产层，用 StooqProvider 的黄金、铜、原油、美元和 USTreasuryProvider 的美元利率作为外围宏观验证。
+
+**网络档位建议：**
+
+```powershell
+# A 股优先，清理代理环境，尽量走 Eastmoney direct；失败后落到 BaoStock
+python scripts\demo_astock.py --network-profile china --view stock --symbol 600519 --limit 5
+python scripts\demo_astock.py --network-profile china --view breadth
+python scripts\demo_astock.py --network-profile china --view sector-breadth --symbol 半导体
+
+# 开着代理做全局/海外数据联动时可用；A 股可能落到 BaoStock
+python scripts\demo_astock.py --network-profile global --view stock --symbol 600519 --limit 5
+```
+
+`source=eastmoney_curl_cffi` / `source=eastmoney_urllib` 表示 Eastmoney direct 成功；`source=stock_zh_a_spot_sina` 表示全 A 快照走新浪兜底；`source=baostock` 表示国内个股历史兜底成功；`source=yahoo_finance` 表示最后才走 Yahoo。
+
+Agent 正式分析前建议先跑 source 审计：
+
+```powershell
+E:\Project\digital-oracle\.venv-eastmoney\Scripts\python.exe E:\Project\digital-oracle\scripts\audit_agent_sources.py --network-profile china --limit 5 --require-venv
+```
+
+审计输出里的 `venv_ok`、`python`、`source` 是判断 agent 是否用对环境和数据源的依据。
 
 ## PolymarketProvider
 
@@ -414,3 +497,104 @@ meetings = fw.get_probabilities()
 ```
 
 **注意：** CME endpoint 可能偶尔不可用。如果失败，可用 Kalshi `KXFED` 系列作为备选获取利率概率。
+
+## AStockMoneyFlowProvider
+
+A 股行业/概念/个股资金流。主力净流入方向、连续天数、超大单/大单/中单/小单分拆。**需要 `pip install akshare`。**
+
+```python
+from digital_oracle import AStockMoneyFlowProvider, MoneyFlowQuery
+
+mf = AStockMoneyFlowProvider()
+
+# 个股资金流历史
+snap = mf.get_moneyflow(MoneyFlowQuery(symbol="600519", scope="individual", lookback_days=5))
+# 返回 MoneyFlowSnapshot
+# snap.symbol                      # "600519"
+# snap.latest_main_net             # 最新一日主力净流入
+# snap.consecutive_inflow_days     # 连续净流入天数
+# snap.consecutive_outflow_days    # 连续净流出天数
+# snap.history                     # tuple[MoneyFlowDay, ...]
+#   day.date                       # YYYY-MM-DD
+#   day.close                      # 收盘价
+#   day.change_pct                 # 涨跌幅
+#   day.main_net_inflow            # 主力净流入
+#   day.super_large_net            # 超大单净流入
+#   day.large_net                  # 大单净流入
+#   day.medium_net                 # 中单净流入
+#   day.small_net                  # 小单净流入
+
+# 行业资金流历史
+snap = mf.get_moneyflow(MoneyFlowQuery(symbol="半导体", scope="industry", lookback_days=5))
+
+# 概念资金流历史
+snap = mf.get_moneyflow(MoneyFlowQuery(symbol="半导体", scope="concept", lookback_days=5))
+
+# 行业资金流排名（今日）
+ranks = mf.list_top_flows(scope="industry", top_n=20)
+# 返回 list[MoneyFlowSnapshot]
+# ranks[0].name, ranks[0].latest_main_net
+
+# 概念资金流排名（今日）
+ranks = mf.list_top_flows(scope="concept", top_n=20)
+```
+
+**分析技巧：**
+- `consecutive_inflow_days >= 3` = 持续主力吸筹信号
+- `consecutive_outflow_days >= 3` = 持续主力撤退信号
+- 价涨 + 主力净流出 = 疑似出货，需要警惕
+- 价跌 + 主力净流入 = 疑似吸筹，关注反转
+- 超大单/大单净流入 vs 中小单净流出 = 机构进场、散户离场，偏看涨
+- 小单净流入占主导 = 散户行情，缺乏持续性
+- 行业排名中主力净流入前 5 + 个股主力净流入靠前 = 板块主线正在被资金追逐
+
+## AStockConstituentProvider
+
+A 股行业/概念板块成分股 + 指数成分股。个股排名、涨跌统计、市值分布。**需要 `pip install akshare`。**
+
+```python
+from digital_oracle import AStockConstituentProvider, ConstituentQuery
+
+ac = AStockConstituentProvider()
+
+# 行业成分股（涨跌幅降序）
+result = ac.get_constituents(
+    ConstituentQuery(symbol="半导体", scope="industry", sort_by="change_pct", top_n=10)
+)
+# 返回 ConstituentList
+# result.total_count              # 成分股总数
+# result.up_count / down_count / flat_count / limit_up_count / limit_down_count
+# result.total_amount             # 板块总成交额
+# result.average_change_pct       # 平均涨跌幅
+# result.median_change_pct        # 中位数涨跌幅
+# result.average_market_cap       # 平均总市值
+# result.constituents             # tuple[StockConstituent, ...]（已排序）
+#   c.code                        # 股票代码
+#   c.name                        # 股票名称
+#   c.latest                      # 最新价
+#   c.change_pct                  # 涨跌幅
+#   c.amount                      # 成交额
+#   c.turnover_rate               # 换手率
+#   c.total_market_cap            # 总市值
+#   c.pe_dynamic                  # 动态市盈率
+#   c.pb                          # 市净率
+
+# 概念板块成分股
+result = ac.get_constituents(
+    ConstituentQuery(symbol="芯片", scope="concept", sort_by="amount", top_n=20)
+)
+
+# 指数成分股（沪深300、中证500等）
+result = ac.get_constituents(
+    ConstituentQuery(symbol="000300", scope="index")
+)
+# 指数成分股通常只有 code/name，没有价格数据
+```
+
+**分析技巧：**
+- `average_change_pct` vs `median_change_pct`：平均值远大于中位数 → 权重股拉指数，小盘股跟涨乏力
+- `limit_up_count >= 5` → 板块炒作火热，注意短期情绪见顶
+- `up_count / total_count > 0.8` → 全面普涨，强趋势；`< 0.3` → 极度悲观或熊市
+- 对比行业排名前 5 的成分股成交额占比 vs 总成交额 → 资金是否过度集中
+- 指数成分股列表提供权重股名单，配合个股资金流判断指数方向
+
