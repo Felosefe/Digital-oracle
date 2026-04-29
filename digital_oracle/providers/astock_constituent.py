@@ -213,7 +213,7 @@ class _AkShareConstituentFetcher:
         if did_search:
             time.sleep(8.0)  # hard rate-limit window after API pagination
         return self._fetch_constituent_data(
-            fs_filter=f"b:BK{code}",
+            fs_filter=f"b:{code}",
             fields=(
                 "f2,f3,f4,f5,f6,f8,f9,f10,f12,f14,f15,f16,f17,f18,"
                 "f20,f21,f23,f24,f25,f62,f104,f105,f115,f128,f136,f152,"
@@ -224,9 +224,9 @@ class _AkShareConstituentFetcher:
     def fetch_concept_constituents(self, *, symbol: str) -> Any:
         code, did_search = self._find_board_code_cached(symbol, t="3")
         if did_search:
-            time.sleep(5.0)
+            time.sleep(8.0)
         return self._fetch_constituent_data(
-            fs_filter=f"b:BK{code}",
+            fs_filter=f"b:{code}",
             fields="f2,f3,f4,f8,f12,f14,f15,f16,f17,f18,f20,f21,f24,f25,f62,f104,f105,f128,f124,f107,f136",
         )
 
