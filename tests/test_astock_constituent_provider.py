@@ -100,7 +100,42 @@ SAMPLE_CONCEPT_ROWS = [
     },
 ]
 
-SAMPLE_INDEX_ROWS = [
+SAMPLE_INDEX_WEIGHT_ROWS = [
+    {
+        "日期": "2026-03-31",
+        "指数代码": "000300",
+        "指数名称": "沪深300",
+        "成分券代码": "600519",
+        "成分券名称": "贵州茅台",
+        "权重": 5.5,
+    },
+    {
+        "日期": "2026-03-31",
+        "指数代码": "000300",
+        "指数名称": "沪深300",
+        "成分券代码": "601318",
+        "成分券名称": "中国平安",
+        "权重": 3.2,
+    },
+    {
+        "日期": "2026-03-31",
+        "指数代码": "000300",
+        "指数名称": "沪深300",
+        "成分券代码": "600036",
+        "成分券名称": "招商银行",
+        "权重": 2.8,
+    },
+    {
+        "日期": "2026-03-31",
+        "指数代码": "000300",
+        "指数名称": "沪深300",
+        "成分券代码": "600519",
+        "成分券名称": "贵州茅台",
+        "权重": 5.5,
+    },
+]
+
+SAMPLE_INDEX_BASIC_ROWS = [
     {
         "品种代码": "600519",
         "品种名称": "贵州茅台",
@@ -112,6 +147,10 @@ SAMPLE_INDEX_ROWS = [
     {
         "品种代码": "600036",
         "品种名称": "招商银行",
+    },
+    {
+        "品种代码": "600519",
+        "品种名称": "贵州茅台",
     },
 ]
 
@@ -129,7 +168,8 @@ class FakeConstituentFetcher:
         self.calls: list[tuple[str, dict[str, Any]]] = []
         self.industry_rows: Any = FrameLike(SAMPLE_INDUSTRY_ROWS)
         self.concept_rows: Any = FrameLike(SAMPLE_CONCEPT_ROWS)
-        self.index_rows: Any = FrameLike(SAMPLE_INDEX_ROWS)
+        self.index_rows: Any = FrameLike(SAMPLE_INDEX_WEIGHT_ROWS)
+        self._use_weight_endpoint = True
 
     def fetch_industry_constituents(self, *, symbol: str) -> Any:
         self.calls.append(("industry", {"symbol": symbol}))
@@ -230,32 +270,50 @@ class AStockConstituentProviderTests(unittest.TestCase):
 
     # -- index --
 
-    def test_index_constituents_basic(self) -> None:
+    def test_index_constituents_with_weight(self) -> None:
         result = self.provider.get_constituents(
             ConstituentQuery(symbol="000300", scope="index")
         )
 
         self.assertEqual(result.scope, "index")
+        self.assertEqual(result.name, "沪深300")
+
+        # 4 input rows → 3 after dedup (600519 appeared twice)
         self.assertEqual(result.total_count, 3)
-        self.assertEqual(result.constituents[0].code, "600519")
-        self.assertEqual(result.constituents[0].name, "贵州茅台")
-        self.assertEqual(result.constituents[2].code, "600036")
 
-        self.assertEqual(self.fetcher.calls[-1][0], "index")
-        self.assertEqual(self.fetcher.calls[-1][1]["symbol"], "000300")
+        c0 = result.constituents[0]
+        self.assertEqual(c0.code, "600519")
+        self.assertEqual(c0.name, "贵州茅台")
+        self.assertAlmostEqual(c0.weight, 5.5)
 
-    def test_index_constituents_no_price_data(self) -> None:
+        c1 = result.constituents[1]
+        self.assertAlmostEqual(c1.weight, 3.2)
+
+        self.assertIsNone(c0.change_pct)
+        self.assertIsNone(c0.amount)
+
+    def test_index_constituents_sort_by_weight(self) -> None:
         result = self.provider.get_constituents(
+            ConstituentQuery(symbol="000300", scope="index", sort_by="weight")
+        )
+
+        weights = [c.weight for c in result.constituents]
+        self.assertEqual(weights, [5.5, 3.2, 2.8])
+
+    def test_index_constituents_basic_fallback(self) -> None:
+        fetcher = FakeConstituentFetcher()
+        fetcher.index_rows = FrameLike(SAMPLE_INDEX_BASIC_ROWS)
+        provider = AStockConstituentProvider(fetcher=fetcher)
+
+        result = provider.get_constituents(
             ConstituentQuery(symbol="000300", scope="index")
         )
 
-        # Index constituents typically only have code/name, no price data
-        for c in result.constituents:
-            self.assertIsNone(c.change_pct)
-            self.assertIsNone(c.amount)
-
-        self.assertEqual(result.average_change_pct, None)
-        self.assertEqual(result.total_amount, None)
+        # Deduped from 4 rows to 3
+        self.assertEqual(result.total_count, 3)
+        self.assertEqual(result.constituents[0].code, "600519")
+        # weight endpoint columns are absent, so weight stays None
+        self.assertIsNone(result.constituents[0].weight)
 
     # -- error handling --
 

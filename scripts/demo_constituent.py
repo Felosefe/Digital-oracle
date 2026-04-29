@@ -67,10 +67,11 @@ def _print_result(result) -> None:
         pe = "n/a" if c.pe_dynamic is None else f"{c.pe_dynamic:.1f}"
         pb = "n/a" if c.pb is None else f"{c.pb:.2f}"
         mcap = "n/a" if c.total_market_cap is None else f"{c.total_market_cap / 1e8:.2f}亿"
+        w = f" {c.weight:.2f}%" if c.weight is not None else ""
         print(
             f"  {i:>3}. {code} {c.name} "
             f"latest={latest} change={change} amount={amt} "
-            f"pe={pe} pb={pb} mcap={mcap}"
+            f"pe={pe} pb={pb} mcap={mcap}{w}"
         )
 
 
@@ -85,7 +86,7 @@ def main() -> int:
     parser.add_argument("--symbol", default="半导体", help="Sector/concept name or index code.")
     parser.add_argument(
         "--sort-by",
-        choices=("change_pct", "amount", "volume", "market_cap", "turnover_rate", "pe", "pb"),
+        choices=("change_pct", "amount", "volume", "market_cap", "turnover_rate", "pe", "pb", "weight"),
         default="change_pct",
         help="Sort constituents by this field (descending).",
     )
