@@ -122,6 +122,10 @@ from .astock_valuation import (
     FinancialQuery,
     ValuationQuery,
 )
+from .astock_disclosure import (
+    AStockDisclosureProvider,
+    DisclosureQuery,
+)
 from .fear_greed import (
     FearGreedProvider,
     FearGreedSnapshot,
@@ -145,6 +149,7 @@ __all__ = [
     "AStockHistoryQuery",
     "AStockMoneyFlowProvider",
     "AStockConstituentProvider",
+    "AStockDisclosureProvider",
     "AStockEtfProvider",
     "AStockMarginProvider",
     "AStockValuationProvider",
@@ -195,6 +200,7 @@ __all__ = [
     "DeribitOrderBook",
     "DeribitOrderLevel",
     "DeribitProvider",
+    "DisclosureQuery",
     "EdgarFiling",
     "EdgarInsiderQuery",
     "EdgarInsiderSummary",

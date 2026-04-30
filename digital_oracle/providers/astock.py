@@ -668,16 +668,19 @@ def _astock_proxy_mode() -> str:
 
 
 def _patch_eastmoney_dns() -> None:
-    """Monkey-patch ``socket.getaddrinfo`` to resolve Eastmoney CDN hosts
-    to real IPs, bypassing Clash fake-IP DNS (198.18.0.x)."""
+    """Monkey-patch ``socket.getaddrinfo`` to resolve ALL *.eastmoney.com
+    hosts to real IPs, bypassing Clash fake-IP DNS (198.18.0.x)."""
     import socket as _socket
 
     _real_getaddrinfo = _socket.getaddrinfo
+    # Real Alibaba Cloud IPs that serve Eastmoney CDN traffic.
+    _EASTMONEY_IPS = ("120.79.191.232", "119.3.232.150", "120.76.218.228")
 
     def _patched(host, port, family=0, type=0, proto=0, flags=0):
-        if isinstance(port, int) and host in _EASTMONEY_HOSTS:
+        if isinstance(port, int) and host.endswith(".eastmoney.com"):
+            # Also match exactly eastmoney.com and its subdomains.
             results: list[tuple] = []
-            for ip in _EASTMONEY_REAL_IPS[host]:
+            for ip in _EASTMONEY_IPS:
                 try:
                     ai = _real_getaddrinfo(
                         ip, port, family=_socket.AF_INET,

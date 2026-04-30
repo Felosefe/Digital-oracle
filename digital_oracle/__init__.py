@@ -1,6 +1,7 @@
 from .providers import (
     AStockBreadthQuery,
     AStockConstituentProvider,
+    AStockDisclosureProvider,
     AStockEtfProvider,
     AStockMarginProvider,
     AStockMoneyFlowProvider,
@@ -44,6 +45,7 @@ from .providers import (
     DeribitOrderBook,
     DeribitOrderLevel,
     DeribitProvider,
+    DisclosureQuery,
     EdgarFiling,
     EdgarInsiderQuery,
     EdgarInsiderSummary,
@@ -112,6 +114,7 @@ from .snapshots import RecordingHttpClient, ReplayHttpClient, SnapshotMissError
 __all__ = [
     "AStockHistoryQuery",
     "AStockConstituentProvider",
+    "AStockDisclosureProvider",
     "AStockEtfProvider",
     "AStockMarginProvider",
     "AStockMoneyFlowProvider",
@@ -155,6 +158,7 @@ __all__ = [
     "DeribitOrderBook",
     "DeribitOrderLevel",
     "DeribitProvider",
+    "DisclosureQuery",
     "EdgarFiling",
     "EdgarInsiderQuery",
     "EdgarInsiderSummary",
