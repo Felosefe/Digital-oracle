@@ -107,6 +107,11 @@ from .astock_constituent import (
     ConstituentQuery,
     StockConstituent,
 )
+from .astock_margin import (
+    AStockMarginProvider,
+    MarginQuery,
+    MarketMargin,
+)
 from .fear_greed import (
     FearGreedProvider,
     FearGreedSnapshot,
@@ -130,9 +135,12 @@ __all__ = [
     "AStockHistoryQuery",
     "AStockMoneyFlowProvider",
     "AStockConstituentProvider",
+    "AStockMarginProvider",
     "ConstituentList",
     "ConstituentQuery",
     "StockConstituent",
+    "MarginQuery",
+    "MarketMargin",
     "MoneyFlowQuery",
     "MoneyFlowSnapshot",
     "AStockBreadthQuery",

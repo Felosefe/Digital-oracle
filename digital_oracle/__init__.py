@@ -1,6 +1,7 @@
 from .providers import (
     AStockBreadthQuery,
     AStockConstituentProvider,
+    AStockMarginProvider,
     AStockMoneyFlowProvider,
     AStockBreadthSnapshot,
     AStockHistoryQuery,
@@ -59,6 +60,8 @@ from .providers import (
     KalshiOrderBook,
     KalshiOrderLevel,
     KalshiProvider,
+    MarginQuery,
+    MarketMargin,
     MoneyFlowQuery,
     MoneyFlowSnapshot,
     OrderBook,
@@ -103,6 +106,7 @@ from .snapshots import RecordingHttpClient, ReplayHttpClient, SnapshotMissError
 __all__ = [
     "AStockHistoryQuery",
     "AStockConstituentProvider",
+    "AStockMarginProvider",
     "AStockMoneyFlowProvider",
     "AStockBreadthQuery",
     "AStockBreadthSnapshot",
@@ -164,6 +168,8 @@ __all__ = [
     "KalshiOrderBook",
     "KalshiOrderLevel",
     "KalshiProvider",
+    "MarginQuery",
+    "MarketMargin",
     "MoneyFlowQuery",
     "MoneyFlowSnapshot",
     "OrderBook",
