@@ -16,7 +16,6 @@ from .astock import (
     _eastmoney_get_json,
     _market_id_for_stock,
     _normalize_stock_code,
-    _parse_kline_items,
 )
 
 
@@ -264,21 +263,18 @@ class _AkShareMoneyFlowFetcher:
 
         time.sleep(0.6)  # avoid rate limiting after pagination
         data = _eastmoney_get_json(
-            "https://push2his.eastmoney.com/api/qt/stock/kline/get",
+            "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get",
             {
                 "secid": f"90.{sector_code}",
-                "fields1": "f1,f2,f3,f4,f5,f6",
-                "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
-                "klt": "101",
-                "fqt": "0",
-                "beg": "19700101",
-                "end": "20500101",
+                "fields1": "f1,f2,f3,f7",
+                "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65",
                 "lmt": "100",
+                "klt": "101",
             },
         )
-        k_payload = data.get("data")
-        klines = k_payload.get("klines") if isinstance(k_payload, Mapping) else None
-        return _parse_kline_items(klines)
+        payload = data.get("data")
+        klines = payload.get("klines") if isinstance(payload, Mapping) else None
+        return _parse_fflow_klines(klines, _row_source(data, "eastmoney_direct"))
 
 
 def _parse_fflow_klines(

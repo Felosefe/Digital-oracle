@@ -378,24 +378,38 @@ class AStockProviderTests(unittest.TestCase):
 
         self.assertEqual(rows[0]["_source"], "baostock")
 
-    def test_fetcher_uses_akshare_stock_snapshot_after_direct_failure(self):
-        class FakeEastmoney:
-            @staticmethod
-            def fetch_stock_snapshots():
-                raise astock_module.ProviderParseError("eastmoney failed")
-
+    def test_fetcher_uses_akshare_stock_snapshot(self):
         class FakeAk:
             @staticmethod
             def stock_zh_a_spot_em():
                 return [{"code": "600519", "name": "Kweichow Moutai"}]
 
         fetcher = object.__new__(_AkShareFetcher)
-        fetcher._eastmoney = FakeEastmoney()
         fetcher._ak = FakeAk()
 
         rows = fetcher.fetch_stock_snapshots()
 
         self.assertEqual(rows[0]["_source"], "stock_zh_a_spot_em")
+        self.assertEqual(rows[0]["code"], "600519")
+
+    def test_fetcher_falls_back_to_sina_when_aksquare_fails(self):
+        class FakeAk:
+            has_stock_zh_a_spot = True
+
+            @staticmethod
+            def stock_zh_a_spot_em():
+                raise astock_module.ProviderParseError("eastmoney failed")
+
+            @staticmethod
+            def stock_zh_a_spot():
+                return [{"代码": "600519", "名称": "贵州茅台", "最新价": 1405.0, "涨跌幅": 1.2}]
+
+        fetcher = object.__new__(_AkShareFetcher)
+        fetcher._ak = FakeAk()
+
+        rows = fetcher.fetch_stock_snapshots()
+
+        self.assertEqual(rows[0]["_source"], "stock_zh_a_spot_sina")
         self.assertEqual(rows[0]["code"], "600519")
 
     def test_fetcher_uses_sina_full_market_snapshot_after_eastmoney_failures(self):

@@ -54,8 +54,25 @@ _SECTOR_PROXY_ALIASES = {
     "\u534a\u5bfc\u4f53": ("\u534a\u5bfc\u4f53", "\u7535\u5b50\u5668\u4ef6", "\u7535\u5b50\u4fe1\u606f"),
     "\u82af\u7247": ("\u534a\u5bfc\u4f53", "\u7535\u5b50\u5668\u4ef6", "\u7535\u5b50\u4fe1\u606f"),
     "\u8bc1\u5238": ("\u8bc1\u5238", "\u8bc1\u5238\u884c\u4e1a"),
-    "\u767d\u9152": ("\u767d\u9152", "\u917f\u9152\u884c\u4e1a"),
+    "\u767d\u9152": ("\u767d\u9152", "\u917f\u9152\u884c\u4e1a", "\u767d\u9152\u2161", "\u767d\u9152\u2162", "\u975e\u767d\u9152"),
+    "\u94f6\u884c": ("\u94f6\u884c",),
+    "\u533b\u836f": ("\u533b\u836f", "\u5316\u5b66\u5236\u836f", "\u4e2d\u836f", "\u751f\u7269\u5236\u54c1", "\u533b\u7597\u5668\u68b0", "\u533b\u836f\u5546\u4e1a"),
+    "\u519b\u5de5": ("\u519b\u5de5", "\u56fd\u9632\u519b\u5de5", "\u519b\u5de5\u7535\u5b50"),
+    "\u65b0\u80fd\u6e90": ("\u65b0\u80fd\u6e90", "\u5149\u4f0f", "\u98ce\u7535", "\u50a8\u80fd", "\u65b0\u80fd\u6e90\u6c7d\u8f66"),
 }
+
+# Real IPs for Eastmoney CDN hosts \u2014 bypass Clash fake-IP DNS (198.18.0.x).
+_EASTMONEY_REAL_IPS: dict[str, tuple[str, ...]] = {
+    "push2.eastmoney.com": ("120.79.191.232", "119.3.232.150", "120.76.218.228"),
+    "push2his.eastmoney.com": ("120.79.191.232", "119.3.232.150"),
+    "82.push2.eastmoney.com": ("120.79.191.232", "119.3.232.150"),
+    "17.push2.eastmoney.com": ("120.79.191.232", "119.3.232.150"),
+    "56.push2.eastmoney.com": ("120.79.191.232", "119.3.232.150"),
+    "7.push2his.eastmoney.com": ("120.79.191.232", "119.3.232.150"),
+    "33.push2his.eastmoney.com": ("120.79.191.232", "119.3.232.150"),
+}
+_EASTMONEY_HOSTS = frozenset(_EASTMONEY_REAL_IPS)
+_DNS_PATCHED = False
 
 @dataclass(frozen=True)
 class AStockHistoryQuery:
@@ -361,23 +378,19 @@ class _AkShareFetcher:
 
     def fetch_stock_snapshots(self) -> Any:
         try:
-            return self._eastmoney.fetch_stock_snapshots()
-        except Exception:
-            pass
-        try:
             return _normalize_stock_snapshot_records(
                 self._ak.stock_zh_a_spot_em(), "stock_zh_a_spot_em"
             )
         except Exception:
             pass
-        if not hasattr(self._ak, "stock_zh_a_spot"):
-            raise ProviderParseError(
-                "Eastmoney stock snapshot clients failed and AkShare has no Sina full-market fallback"
-            )
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            return _normalize_stock_snapshot_records(
-                self._ak.stock_zh_a_spot(), "stock_zh_a_spot_sina"
-            )
+        if hasattr(self._ak, "stock_zh_a_spot"):
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                return _normalize_stock_snapshot_records(
+                    self._ak.stock_zh_a_spot(), "stock_zh_a_spot_sina"
+                )
+        raise ProviderParseError(
+            "Eastmoney stock snapshot clients failed and AkShare has no Sina full-market fallback"
+        )
 
     def fetch_sector_snapshots(self) -> Any:
         try:
@@ -386,10 +399,14 @@ class _AkShareFetcher:
             return _tag_records(self._ak.stock_sector_spot(), "stock_sector_spot")
 
     def fetch_sector_constituents(self, *, symbol: str) -> Any:
-        return _tag_records(
-            self._ak.stock_board_industry_cons_em(symbol=symbol),
-            "stock_board_industry_cons_em",
-        )
+        # Use direct Eastmoney HTTP layer to bypass stale proxy / fake-IP DNS.
+        try:
+            return _fetch_sector_constituents_direct(symbol=symbol)
+        except Exception:
+            return _tag_records(
+                self._ak.stock_board_industry_cons_em(symbol=symbol),
+                "stock_board_industry_cons_em",
+            )
 
     def fetch_sector_history(
         self,
@@ -650,7 +667,34 @@ def _astock_proxy_mode() -> str:
     return "direct"
 
 
+def _patch_eastmoney_dns() -> None:
+    """Monkey-patch ``socket.getaddrinfo`` to resolve Eastmoney CDN hosts
+    to real IPs, bypassing Clash fake-IP DNS (198.18.0.x)."""
+    import socket as _socket
+
+    _real_getaddrinfo = _socket.getaddrinfo
+
+    def _patched(host, port, family=0, type=0, proto=0, flags=0):
+        if isinstance(port, int) and host in _EASTMONEY_HOSTS:
+            results: list[tuple] = []
+            for ip in _EASTMONEY_REAL_IPS[host]:
+                try:
+                    ai = _real_getaddrinfo(
+                        ip, port, family=_socket.AF_INET,
+                        type=_socket.SOCK_STREAM, proto=6, flags=flags,
+                    )
+                    results.extend(ai)
+                except _socket.gaierror:
+                    continue
+            if results:
+                return results
+        return _real_getaddrinfo(host, port, family, type, proto, flags)
+
+    _socket.getaddrinfo = _patched
+
+
 def _configure_astock_network_env() -> None:
+    global _DNS_PATCHED
     mode = _astock_proxy_mode()
     if mode == "explicit":
         proxy = os.environ[_ASTOCK_PROXY_ENV].strip()
@@ -669,6 +713,13 @@ def _configure_astock_network_env() -> None:
     if mode == "direct":
         _clear_proxy_env()
         _ensure_astock_no_proxy()
+        # Prevent requests/urllib from reading stale Windows registry proxy.
+        os.environ["NO_PROXY"] = "*"
+        os.environ["no_proxy"] = "*"
+        # Bypass Clash fake-IP DNS (198.18.0.x → real Alibaba Cloud IPs).
+        if not _DNS_PATCHED:
+            _patch_eastmoney_dns()
+            _DNS_PATCHED = True
 
 
 def _clear_proxy_env() -> None:
@@ -1250,8 +1301,15 @@ def _fetch_stock_snapshots_direct() -> list[dict[str, object]]:
     )
     payload = data.get("data")
     diff = payload.get("diff") if isinstance(payload, Mapping) else None
-    if not isinstance(diff, list):
+    if not isinstance(diff, list) or not diff:
         raise ProviderParseError("missing Eastmoney stock snapshot rows")
+    total = payload.get("total") if isinstance(payload, Mapping) else None
+    if isinstance(total, (int, float)) and int(total) > len(diff) * 5:
+        # Eastmoney caps pz at 100 regardless of what we request.
+        # Fall back to Sina / akshare which return all ~5500 rows at once.
+        raise ProviderParseError(
+            f"Eastmoney returned only {len(diff)} of {int(total)} stocks"
+        )
     return _tag_records(
         [
         {
@@ -1307,6 +1365,84 @@ def _fetch_sector_snapshots_direct() -> list[dict[str, object]]:
             "amount": row.get("f6"),
             "turnover_rate": row.get("f8"),
             "total_market_cap": row.get("f20"),
+            "up_count": row.get("f104"),
+            "down_count": row.get("f105"),
+        }
+        for row in diff
+        if isinstance(row, Mapping)
+        ],
+        _row_source(data, "eastmoney_direct"),
+    )
+
+
+def _fetch_sector_constituents_direct(
+    *, symbol: str
+) -> list[dict[str, object]]:
+    """Fetch industry board constituents via direct Eastmoney HTTP layer."""
+    # 1. Find the board code via paginated search, respecting aliases.
+    aliases = _SECTOR_PROXY_ALIASES.get(symbol, (symbol,))
+    sector_code = None
+    for pn in range(1, 7):
+        data = _eastmoney_get_json(
+            "https://push2.eastmoney.com/api/qt/clist/get",
+            {
+                "pn": str(pn), "pz": "100", "po": "1", "np": "1",
+                "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+                "fltt": "2", "invt": "2", "fid": "f3",
+                "fs": "m:90 t:2 f:!50",
+                "fields": "f12,f14",
+            },
+        )
+        payload = data.get("data")
+        diff = payload.get("diff") if isinstance(payload, Mapping) else None
+        if not isinstance(diff, list) or not diff:
+            break
+        for row in diff:
+            if isinstance(row, Mapping) and str(row.get("f14", "")) in aliases:
+                sector_code = row.get("f12")
+                if sector_code:
+                    sector_code = str(sector_code)
+                break
+        if sector_code:
+            break
+
+    if sector_code is None:
+        raise ProviderParseError(
+            f"unknown A-share sector: {symbol!r}"
+        )
+
+    # 2. Fetch constituents for that board.
+    data = _eastmoney_get_json(
+        "https://push2.eastmoney.com/api/qt/clist/get",
+        {
+            "pn": "1", "pz": "500", "po": "1", "np": "1",
+            "ut": "bd1d9ddb04089700cf9c27f6f7426281",
+            "fltt": "2", "invt": "2", "fid": "f3",
+            "fs": f"b:{sector_code}",
+            "fields": (
+                "f2,f3,f4,f5,f6,f8,f12,f14,f20,f62,f104,f105"
+            ),
+        },
+    )
+    payload = data.get("data")
+    diff = payload.get("diff") if isinstance(payload, Mapping) else None
+    if not isinstance(diff, list):
+        raise ProviderParseError(
+            f"missing Eastmoney constituent rows for {symbol!r}"
+        )
+    return _tag_records(
+        [
+        {
+            "code": row.get("f12"),
+            "name": row.get("f14"),
+            "latest": row.get("f2"),
+            "change_pct": row.get("f3"),
+            "change_amount": row.get("f4"),
+            "volume": row.get("f5"),
+            "amount": row.get("f6"),
+            "turnover_rate": row.get("f8"),
+            "total_market_cap": row.get("f20"),
+            "main_net_inflow": row.get("f62"),
             "up_count": row.get("f104"),
             "down_count": row.get("f105"),
         }
