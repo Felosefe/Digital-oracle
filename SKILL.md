@@ -95,7 +95,11 @@ Based on question type, select from the signal menu below. **Don't use just one 
 - Global macro validation: US Treasury yield curve, copper/gold ratio, crude oil, gold, CFTC COT for copper/gold/crude
 - Risk appetite validation: SPY/QQQ trend, VIX/FearGreed, BTC/ETH market cap and Deribit BTC futures basis
 - AStockMoneyFlowProvider: industry/concept/individual stock fund flow — main net inflow direction, consecutive flow days, super-large/large/medium/small order breakdowns
-- AStockConstituentProvider: sector/concept/index constituent lists — ranked by change/amount/cap, with aggregate breadth stats (up/down/limit-up/limit-down counts)
+- AStockConstituentProvider: sector/concept/index constituent lists — ranked by change/amount/cap/weight, with aggregate breadth stats (up/down/limit-up/limit-down counts)
+- AStockMarginProvider: exchange-level margin trading data — financing balance (leverage gauge), financing buy amount (new money entering), short balance, buy/balance ratio (overheat signal)
+- AStockEtfProvider: ETF snapshots and history — price, IOPV, premium/discount rate, shares outstanding, market cap, fund flow; search by keyword
+- AStockValuationProvider: index PE/PB history with percentile (e.g. 沪深300 PE 处于 22% 分位), individual stock financials (EPS, ROE, revenue/profit growth, margins, debt ratio)
+- AStockDisclosureProvider: daily A-share notices — keyword search for 减持/回购/业绩预告/定增, filter by stock or category
 - Northbound flow: use as foreign institutional allocation signal; sustained net inflow supports large-cap A-share risk appetite
 
 #### Stock/Options analysis / Crash probability
@@ -144,6 +148,10 @@ from digital_oracle import (
     AStockSectorHistoryQuery, AStockNorthboundQuery,  # requires uv pip install akshare; baostock recommended
     AStockMoneyFlowProvider, MoneyFlowQuery,           # requires uv pip install akshare
     AStockConstituentProvider, ConstituentQuery,       # requires uv pip install akshare
+    AStockMarginProvider, MarginQuery,                 # requires uv pip install akshare
+    AStockEtfProvider, EtfQuery, EtfHistoryQuery,      # requires uv pip install akshare
+    AStockValuationProvider, ValuationQuery,           # requires uv pip install akshare
+    AStockDisclosureProvider, DisclosureQuery,         # requires uv pip install akshare
     FearGreedProvider,
     CMEFedWatchProvider,
     gather,
@@ -164,6 +172,10 @@ yf = YFinanceProvider()  # requires uv pip install yfinance
 astock = AStockProvider()  # requires uv pip install akshare; baostock recommended for stock-history fallback
 moneyflow = AStockMoneyFlowProvider()  # requires uv pip install akshare
 constituent = AStockConstituentProvider()  # requires uv pip install akshare
+margin = AStockMarginProvider()            # requires uv pip install akshare
+etf = AStockEtfProvider()                  # requires uv pip install akshare
+valuation = AStockValuationProvider()      # requires uv pip install akshare
+disclosure = AStockDisclosureProvider()    # requires uv pip install akshare
 fear_greed = FearGreedProvider()
 fedwatch = CMEFedWatchProvider()
 
@@ -206,6 +218,17 @@ result = gather({
         ConstituentQuery(symbol="半导体", scope="industry", sort_by="change_pct")
     ),
     "hs300_cons": lambda: constituent.get_constituents(ConstituentQuery(symbol="000300", scope="index")),
+    # Margin / leverage sentiment
+    "market_margin": lambda: margin.get_market_margin(MarginQuery(lookback_days=10)),
+    # ETF flow — are investors buying or selling the ETF?
+    "semi_etf": lambda: etf.list_etfs(EtfQuery(name_keyword="半导体", top_n=3)),
+    "etf_history": lambda: etf.get_history(EtfHistoryQuery(symbol="159813", limit=20)),
+    # Valuation — is it cheap or expensive?
+    "hs300_val": lambda: valuation.get_index_valuation(ValuationQuery(symbol="沪深300", lookback_days=60)),
+    "stock_fin": lambda: valuation.get_financials(FinancialQuery(symbol="600519")),
+    # Disclosures — any red flags?
+    "reduction_notices": lambda: disclosure.list_notices(DisclosureQuery(keyword="减持", top_n=20)),
+    "buyback_notices": lambda: disclosure.list_notices(DisclosureQuery(keyword="回购", top_n=20)),
     # Web search runs in parallel with structured providers
     "vix": lambda: web.search("VIX index current level"),
     "hy_spread": lambda: web.search("US high yield bond spread OAS"),
@@ -241,11 +264,15 @@ if chain:
 | YFinanceProvider | US options chains | IV, Greeks, put/call ratio, max pain | yfinance |
 | AStockProvider | China A-share market | Indices, all A-share stocks, sectors, market/sector breadth, turnover, northbound flow | akshare; baostock recommended |
 | AStockMoneyFlowProvider | A-share fund flow | Industry/concept/individual main inflow, order-size breakdown, consecutive flow days | akshare |
-| AStockConstituentProvider | A-share constituents | Sector/concept/index member lists ranked by price change/amount/cap, with breadth stats | akshare |
+| AStockConstituentProvider | A-share constituents | Sector/concept/index member lists ranked by change/amount/cap/weight, with breadth stats | akshare |
+| AStockMarginProvider | Margin trading | Two-city margin balance, buy amount, short balance, leverage ratio gauge | akshare |
+| AStockEtfProvider | ETF data | ETF snapshots (IOPV, premium, shares, flow) + price history, keyword search | akshare |
+| AStockValuationProvider | Valuation & fundamentals | Index PE/PB history with percentile, stock financials (EPS/ROE/growth/margins) | akshare |
+| AStockDisclosureProvider | Announcements | Daily A-share notices, keyword filtering (减持/回购/业绩 etc.) | akshare |
 | **FearGreedProvider** | **Market sentiment** | **CNN 7-signal composite → 0-100 score** | **stdlib** |
 | **CMEFedWatchProvider** | **Rate probabilities** | **FOMC rate change implied from futures** | **stdlib** |
 
-> 12 out of 17 providers have zero external dependencies and zero API keys. YahooPriceProvider and YFinanceProvider require `pip install yfinance`. AStockProvider, AStockMoneyFlowProvider, and AStockConstituentProvider require `pip install akshare`; install `baostock` to enable domestic stock-history fallback for AStockProvider.
+> 12 out of 21 providers have zero external dependencies and zero API keys. YahooPriceProvider and YFinanceProvider require `pip install yfinance`. All AStock* providers require `pip install akshare`; AStockProvider also benefits from `pip install baostock` for domestic stock-history fallback.
 
 **WebSearchProvider usage:**
 - `web.search("query")` → returns `WebSearchResult` (search summary) — render with `.text()`
@@ -359,7 +386,11 @@ Four analysis dimensions:
 - YFinance requires `uv pip install yfinance` (auto-installs pandas). After-hours IV may be inaccurate (bid/ask = 0) — use during market hours
 - AStockProvider requires `uv pip install akshare`; install `uv pip install baostock` to enable domestic A-share stock-history fallback before Yahoo. It covers China A-share stock history, index history, sector snapshots/history, market breadth, sector breadth, turnover, and northbound flow. By default it includes all A-share boards; pass `mainboard_only=True` only when the user explicitly wants mainboard-only analysis
 - For A-share investment analysis, always include market breadth before stock picking: `get_market_breadth(AStockBreadthQuery())` for all-A up/down/flat/limit-up/limit-down counts and total turnover, and `get_sector_breadth(AStockSectorBreadthQuery(symbol="..."))` for the target sector when available. Prefer `breadth.metadata["breadth_level"] == "stock"`; `source=stock_zh_a_spot_sina` is acceptable as a full-A stock-level fallback when Eastmoney full-market snapshots fail. If `breadth.metadata["breadth_level"] == "sector_proxy"`, state that breadth is sector-level fallback rather than stock-level breadth. Treat weak breadth with strong index gains as a narrowing-market warning
-- AStockConstituentProvider requires `uv pip install akshare`. Provides `get_constituents(ConstituentQuery(symbol=..., scope="industry"/"concept"/"index", sort_by="change_pct"/"amount"/"market_cap", top_n=...))` returning a `ConstituentList` with ranked `StockConstituent` entries plus aggregate breadth stats (up/down/flat/limit-up/limit-down counts, total amount, average/median change, average market cap). For industry/concept scope, `symbol` is the Chinese name ("半导体"); for index scope, `symbol` is the index code ("000300"). Use this to check if a sector rally is broad-based or driven by a few heavyweights — if `average_change_pct > median_change_pct` by a wide margin, large-caps are pulling the index while small-caps lag
+- AStockConstituentProvider requires `uv pip install akshare`. Provides `get_constituents(ConstituentQuery(symbol=..., scope="industry"/"concept"/"index", sort_by="change_pct"/"amount"/"market_cap"/"weight", top_n=...))` returning a `ConstituentList` with ranked `StockConstituent` entries plus aggregate breadth stats. 40+ common boards are hardcoded to skip API lookup. Use index scope with `sort_by="weight"` for index heavyweights. If `average_change_pct >> median_change_pct`, large-caps are pulling the index while small-caps lag
+- AStockMarginProvider requires `uv pip install akshare`. Provides `get_market_margin(MarginQuery(exchange="both"/"sh"/"sz", lookback_days=20))` returning `MarketMargin` with two-city financing balance, daily buy amount, short balance, total balance, and per-day history. Key signals: `latest_financing_buy / latest_financing_balance > 10%` = leveraged buying is aggressive (overheat risk); declining financing balance + rising market = divergence (rally losing steam). Short balance is typically tiny (<1% of financing) in A-shares — a sudden spike is a bearish signal
+- AStockEtfProvider requires `uv pip install akshare`. Provides `list_etfs(EtfQuery(name_keyword="半导体", top_n=10))` for ETF search (returns price/IOPV/premium/shares/market cap/fund flow), and `get_history(EtfHistoryQuery(symbol="159813", limit=20))` for price history. Key signals: premium > 2% = excessive buying interest (overbought); discount < -2% = panic selling; rising shares outstanding + rising price = genuine inflow; rising price + flat/falling shares = short-term speculation. Cross-check ETF flow with sector fund flow from AStockMoneyFlowProvider
+- AStockValuationProvider requires `uv pip install akshare`. Provides `get_index_valuation(ValuationQuery(symbol="沪深300"/"上证50"/"中证500", lookback_days=252))` returning `IndexValuation` with PE/PB history and percentile (0-100%), and `get_financials(FinancialQuery(symbol="600519", start_year="2024"))` returning `StockFinancials` with EPS, ROE, revenue/profit growth, margins, debt ratio, liquidity ratios. Key signals: PE percentile < 20% = historically cheap, > 80% = expensive; ROE > 15% + profit growth > 10% = quality compounder; debt ratio > 60% + declining current ratio = liquidity risk
+- AStockDisclosureProvider requires `uv pip install akshare`. Provides `list_notices(DisclosureQuery(keyword="减持"/"回购"/"业绩预告", top_n=50))` returning `NoticeList` with code, name, title, category, date, URL. Use keyword filtering to find relevant announcements. 减持 (reduction) = insiders selling, bearish; 回购 (buyback) = company buying its own stock, bullish; 业绩预告 (earnings forecast) = check if guidance was raised or lowered; 定增 (private placement) = dilution risk. Notes: fetches up to 5 pages (500 notices), use keyword + symbol combo to narrow results. The data source is Eastmoney `np-anotice-stock`; if it's unreachable, the provider falls back to akshare's slower paginated fetch
 - AStockMoneyFlowProvider requires `uv pip install akshare`. Provides `get_moneyflow(MoneyFlowQuery(symbol=..., scope=..., lookback_days=5))` for individual/industry/concept history with consecutive inflow/outflow day tracking, and `list_top_flows(scope="industry"/"concept", top_n=20)` for ranking. For individual stocks, `symbol` is the stock code ("600519"); for industry/concept, use the Chinese name ("半导体"). Money flow data is same-day T+0 — it reflects the current session's capital movements. Always cross-check flow direction with price direction: rising price + net outflow = distribution warning; falling price + net inflow = accumulation signal
 - AStockProvider's optional mainboard filter keeps `600/601/603/605` and `000/001/002/003`, and excludes ChiNext, STAR Market, and Beijing Stock Exchange codes
 - For A-share data collection, prefer `scripts/demo_astock.py --network-profile china` or an equivalent direct domestic route. When a global proxy/VPN route is active, Eastmoney may fail and AStockProvider should fall back to BaoStock/Yahoo; treat `history.metadata["source"]` as part of the evidence quality note

@@ -105,7 +105,7 @@ class AStockSectorHistoryQuery:
 
 @dataclass(frozen=True)
 class AStockNorthboundQuery:
-    symbol: str = "鍖楀悜璧勯噾"
+    symbol: str = "北向资金"
     limit: int | None = None
 
 

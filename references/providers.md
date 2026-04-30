@@ -19,6 +19,10 @@ from digital_oracle import (
     AStockProvider, AStockHistoryQuery, AStockBreadthQuery, AStockSectorBreadthQuery,  # pip install akshare baostock
     AStockMoneyFlowProvider, MoneyFlowQuery,  # pip install akshare
     AStockConstituentProvider, ConstituentQuery,  # pip install akshare
+    AStockMarginProvider, MarginQuery,  # pip install akshare
+    AStockEtfProvider, EtfQuery, EtfHistoryQuery,  # pip install akshare
+    AStockValuationProvider, ValuationQuery, FinancialQuery,  # pip install akshare
+    AStockDisclosureProvider, DisclosureQuery,  # pip install akshare
     FearGreedProvider,
     CMEFedWatchProvider,
 )
@@ -597,4 +601,94 @@ result = ac.get_constituents(
 - `up_count / total_count > 0.8` → 全面普涨，强趋势；`< 0.3` → 极度悲观或熊市
 - 对比行业排名前 5 的成分股成交额占比 vs 总成交额 → 资金是否过度集中
 - 指数成分股列表提供权重股名单，配合个股资金流判断指数方向
+
+## AStockMarginProvider
+
+A 股融资融券数据。两市融资余额、买入额、融券余额、杠杆率。**需要 `pip install akshare`。**
+
+```python
+from digital_oracle import AStockMarginProvider, MarginQuery
+
+m = AStockMarginProvider()
+
+result = m.get_market_margin(MarginQuery(exchange="both", lookback_days=20))
+# 返回 MarketMargin
+# result.latest_financing_balance  # 两市融资余额
+# result.latest_financing_buy       # 当日融资买入额
+# result.latest_short_balance       # 融券余额
+# result.days                       # tuple[MarginDay, ...]
+#   day.financing_balance / day.financing_buy / day.short_balance / day.total_balance
+```
+
+**分析技巧：**
+- `financing_buy / financing_balance > 10%` = 杠杆买入激进，情绪过热
+- 融资余额下降 + 指数上涨 = 背离，涨势衰减
+- A 股融券余额通常 < 融资的 1%，突然飙升看空
+
+## AStockEtfProvider
+
+A 股 ETF 实时行情、折溢价、份额、资金流、历史日线。**需要 `pip install akshare`。**
+
+```python
+from digital_oracle import AStockEtfProvider, EtfQuery, EtfHistoryQuery
+
+e = AStockEtfProvider()
+
+# 关键词搜索 ETF
+result = e.list_etfs(EtfQuery(name_keyword="半导体", top_n=10))
+# snap.code, snap.name, snap.latest, snap.iopv
+# snap.premium_pct (正=溢价), snap.shares_outstanding (份额)
+# snap.market_cap, snap.main_net_inflow, snap.turnover_rate
+
+# 单只 ETF 历史
+bars = e.get_history(EtfHistoryQuery(symbol="159813", limit=20))
+# bar.date, bar.open, bar.close, bar.volume, bar.amount
+```
+
+**分析技巧：**
+- 溢价 > 2% = 买入过旺；折价 < -2% = 恐慌
+- 份额增加 + 价格上涨 = 资金真实流入
+- 份额不变 + 价格上涨 = 短期投机
+
+## AStockValuationProvider
+
+指数 PE/PB 分位 + 个股财务指标。**需要 `pip install akshare`。**
+
+```python
+from digital_oracle import AStockValuationProvider, ValuationQuery, FinancialQuery
+
+v = AStockValuationProvider()
+
+# 指数估值分位
+result = v.get_index_valuation(ValuationQuery(symbol="沪深300", lookback_days=252))
+# result.latest_pe / result.latest_pe_percentile (0-100)
+# result.latest_pb / result.latest_pb_percentile
+# result.days → tuple[PePbDay] (PE/PB/分位/指数点位)
+
+# 个股财务
+fin = v.get_financials(FinancialQuery(symbol="600519", start_year="2025"))
+# fin.eps, fin.roe, fin.revenue_growth, fin.profit_growth
+# fin.gross_margin, fin.net_margin, fin.debt_ratio
+# fin.current_ratio, fin.book_value_per_share
+```
+
+**分析技巧：**
+- PE 分位 < 20% = 低估，> 80% = 高估
+- ROE > 15% + 利润增速 > 10% + 负债率 < 40% = 优质
+
+## AStockDisclosureProvider
+
+A 股公告搜索。按关键词/个股/类型检索每日公告。**需要 `pip install akshare`。**
+
+```python
+from digital_oracle import AStockDisclosureProvider, DisclosureQuery
+
+d = AStockDisclosureProvider()
+
+result = d.list_notices(DisclosureQuery(keyword="减持", top_n=20))
+# n.code, n.name, n.title, n.category, n.date, n.url
+```
+
+**分析技巧：**
+- 减持 = 利空；回购 = 利好；业绩预告 = 盈利拐点信号
 
