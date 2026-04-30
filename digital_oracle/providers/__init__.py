@@ -112,6 +112,11 @@ from .astock_margin import (
     MarginQuery,
     MarketMargin,
 )
+from .astock_etf import (
+    AStockEtfProvider,
+    EtfHistoryQuery,
+    EtfQuery,
+)
 from .fear_greed import (
     FearGreedProvider,
     FearGreedSnapshot,
@@ -135,10 +140,13 @@ __all__ = [
     "AStockHistoryQuery",
     "AStockMoneyFlowProvider",
     "AStockConstituentProvider",
+    "AStockEtfProvider",
     "AStockMarginProvider",
     "ConstituentList",
     "ConstituentQuery",
     "StockConstituent",
+    "EtfHistoryQuery",
+    "EtfQuery",
     "MarginQuery",
     "MarketMargin",
     "MoneyFlowQuery",

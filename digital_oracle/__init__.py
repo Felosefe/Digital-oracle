@@ -1,6 +1,7 @@
 from .providers import (
     AStockBreadthQuery,
     AStockConstituentProvider,
+    AStockEtfProvider,
     AStockMarginProvider,
     AStockMoneyFlowProvider,
     AStockBreadthSnapshot,
@@ -48,6 +49,8 @@ from .providers import (
     EdgarProvider,
     EdgarSearchHit,
     EdgarSearchQuery,
+    EtfHistoryQuery,
+    EtfQuery,
     FearGreedProvider,
     FearGreedSnapshot,
     FedMeetingProbability,
@@ -106,6 +109,7 @@ from .snapshots import RecordingHttpClient, ReplayHttpClient, SnapshotMissError
 __all__ = [
     "AStockHistoryQuery",
     "AStockConstituentProvider",
+    "AStockEtfProvider",
     "AStockMarginProvider",
     "AStockMoneyFlowProvider",
     "AStockBreadthQuery",
@@ -153,6 +157,8 @@ __all__ = [
     "EdgarProvider",
     "EdgarSearchHit",
     "EdgarSearchQuery",
+    "EtfHistoryQuery",
+    "EtfQuery",
     "ExchangeRateQuery",
     "ExchangeRateRecord",
     "FearGreedProvider",
