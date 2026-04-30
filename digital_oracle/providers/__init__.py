@@ -117,6 +117,11 @@ from .astock_etf import (
     EtfHistoryQuery,
     EtfQuery,
 )
+from .astock_valuation import (
+    AStockValuationProvider,
+    FinancialQuery,
+    ValuationQuery,
+)
 from .fear_greed import (
     FearGreedProvider,
     FearGreedSnapshot,
@@ -142,11 +147,13 @@ __all__ = [
     "AStockConstituentProvider",
     "AStockEtfProvider",
     "AStockMarginProvider",
+    "AStockValuationProvider",
     "ConstituentList",
     "ConstituentQuery",
     "StockConstituent",
     "EtfHistoryQuery",
     "EtfQuery",
+    "FinancialQuery",
     "MarginQuery",
     "MarketMargin",
     "MoneyFlowQuery",
@@ -221,6 +228,7 @@ __all__ = [
     "StooqProvider",
     "YahooPriceProvider",
     "USTreasuryProvider",
+    "ValuationQuery",
     "WebPageContent",
     "WebPageQuery",
     "WebSearchProvider",
